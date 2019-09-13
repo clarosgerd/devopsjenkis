@@ -1,0 +1,66 @@
+pipeline{
+    agent {
+        docker {
+            image 'node:latest'
+            image 'mongo'
+        }
+    }
+    stages{
+        stage("Get Code from Git"){
+            agent { label 'master' }
+            steps{
+               git 'https://github.com/alvaro980/JavaScript.git'
+            }  
+        }
+        // stage("Build"){
+        //     agent { label ' master' }
+        //     steps{
+        //          sh "docker run -d -p 27017:27017 --name db mongo"
+        //          sh "docker run -d -p 4000:4000 --name web_app node" 
+        //          sh "npm install"     
+        //     }
+        // }
+        // stage("Deploy to QA"){
+        //     agent { label ' master' }
+        //     steps{
+        //          sh "npm run dev"     
+        //     }
+        // }
+        stage("Get Automation Code from Git"){
+            agent { label 'tree/books-app-auto-devops' }
+            steps{
+               git 'https://github.com/susana-lima/auto-GA-v07.git'
+            } 
+        }
+        stage("Run Automation tests"){
+            agent { label 'master' }
+            steps{
+                dir("auto-GA-v07"){
+                    sh "sudo ./gradlew build"  
+                    sh "gradlew runFeatures"   
+                }
+            }  
+        }
+         stage("Generate Automation report"){
+            agent{label "master"}
+            steps{
+                cucumber buildStatus: 'UNSTABLE',
+                fileIncludePattern: 'target/*.json',
+                trendsLimit: 10,
+                classifications: [
+                    [
+                        'key': 'Browser',
+                        'value': 'Chrome'
+                    ]
+                ]
+            }
+        }
+        stage("Deploy PROD"){
+            agent{label "PROD"}
+            steps{
+                sh "docker network create -d overlay appoverlay1"
+                sh "docker service create --name web_app -d --network appoverlay1 -p 4000:4000 hshar/web_app"
+            }
+        }
+    }
+}
